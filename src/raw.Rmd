@@ -1,0 +1,660 @@
+---
+title: "Dekompozycja szeregów czasowych i zastosowanie wskaźników analizy technicznej"
+author: "Stanisław Olek"
+header-includes:
+   - \usepackage[OT4]{polski}
+   - \usepackage[utf8]{inputenc}
+   - \usepackage{graphicx}
+   - \usepackage{float}
+   - \usepackage{verbdef}
+   - \usepackage{array}
+   - \verbdef{\verbaufbeer}{aufbeer}
+   - \verbdef{\per5}{s.window = 'periodic', t.window = 5}
+   - \verbdef{\p9}{s.window = 'periodic', t.window = 9}
+   - \verbdef{\verx135}{s.window = 13, t.window = 5}
+   - \verbdef{\ver139}{s.window = 13, t.window = 9}
+   - \newtheorem{uw}{Uwaga!}
+output: 
+  pdf_document:
+    toc: true
+    fig_caption: yes
+    fig_width: 5
+    fig_height: 3.5 
+    number_sections: true
+fontsize: 10pt 
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+knitr::opts_chunk$set(fig.pos = "H", out.extra = "", fig.align = "center")
+```
+
+# Dekompozycja szeregów czasowych - usuwanie trendu i sezonowości
+Pierwszym zagadnieniem, jakim się zajmiemy będzie usuwanie trendu i sezonowości w szeregu czasowym. Zobaczymy, na przykładzie, kilka metod dekompozycji szeregu czasowego:
+\begin{itemize}
+\item dekompozycja na podstawie ruchomej średniej,
+\item dekompozycja na podstawie modelu regresji,
+\item dekompozycja STL oparta na metodzie loess.
+\end{itemize}
+Dodatkowo, do każdej z metod dekompozycji zastosujemy transformację Boxa-Coxa i zobaczymy, czy ma ona istotny wpływ na wyniki. Na koniec porównamy wyniki eliminacji trendu i sezonowości z tymi uzyskanymi przez różnicowanie danych.
+\subsection{Przygotowanie i wstępna analiza danych}
+Jako zbiór danych weźmiemy zbiór \verb+ausbeer+ z biblioteki \verb+fpp2+. Dane te dotyczą całkowitej kwartalnej produkcji piwa w Australii (w megalitrach) w latach 1956 - 2010. Na początek zobaczymy wykres tych danych, razem z wykresami ACF i PACF.
+\begin{figure}[H]
+```{r, echo=FALSE,fig.height=3,fig.width=4.5}
+library(fpp2)
+library(showtext)
+dane <- ausbeer
+ggtsdisplay(dane, main = 'Szereg czasowy ausbeer')
+showtext_auto() 
+```
+\caption{Wykres danych oraz funkcji autokorelacji i cząstkowej autokorelacji}
+\label{plot1}
+\end{figure}
+Na wykresach \ref{plot1} możemy dostrzec trend w latach 1956 - 1975, który nie był tak wyraźny w późniejszym okresie. Prawdopodobnie jest to trend kwadratowy, a w późniejszym okresie możemy mieć do czynienia z trendem liniowym. Wykres ACF pokazuje nam także sezonowość (jest on okresowy). Dodatkowo, możemy stwierdzić, że \verb+ausbeer+ nie jest białym szumem (nie jest nawet szeregiem stacjonarnym). Aby dokładniej stwierdzić, jaki okres ma sezonowość dla danych \verb+ausbeer+ możemy popatrzeć na wykres sezonowy \ref{plot2}.
+\begin{figure}[H]
+```{r, echo=FALSE, fig.height=5,fig.width=5}
+ggseasonplot(dane, main = 'Wykres sezonowy 
+dla danych aufbeer')
+```
+\caption{Wykres sezonowy dla danych \verbaufbeer}
+\label{plot2}
+\end{figure}
+Po wykresie sezonowym możemy stwierdzić, że mamy do czynienia z sezonowością o okresie 4 (bo dane są podzielone na kwartały, a nie na miesiące). Jeszcze lepiej pokazuje to wykres \ref{plot3}.
+\begin{figure}[H]
+```{r,echo=FALSE}
+lag.plot(dane, lags = 4, main = 'Wykresy rozrzutu dla opóźnienia')
+```
+\caption{Wykres rozrzutu dla opóźnienia: widać wyraźnie sezonowość o okresie 4}
+\label{plot3}
+\end{figure}
+Dodatkowo, na podstawie wykresu \ref{plot1} zauważamy, że w danych nie ma obserwacji odstających.
+\subsection{Dekompozycja szeregu}
+Zastosujemy teraz kilka metod dekompozycji szeregu, aby zobaczyć, która z nich daje najlepszy rezultat. Analizować będziemy 3 metody:
+\begin{enumerate}
+\item dekompozycja na podstawie ruchomej średniej \ref{par1}
+\item dekompozycja na podstawie modelu regresji \ref{par2}
+\item dekompozycja STL opartą na metodzie loess \ref{par3}
+\end{enumerate}
+Najpierw zajmiemy się dekompozycją na podstawie ruchomej średniej.
+\subsubsection{Dekompozycja na podstawie ruchomej średniej} \label{par1}
+W przypadku tej dekompozycji zajmiemy się dwoma rodzajami - dekompozycją addytywną i multiplikatywną. Do dekompozycji na podstawie ruchomej średniej wykorzystujemy funkcję \verb+decompose+.
+```{r,echo=FALSE}
+dekomp.add <- decompose(dane, type = 'additive')
+dekomp.mult <- decompose(dane, type = 'multiplicative')
+dekomp.add.trend <- dekomp.add$trend
+dekomp.add.sez <- dekomp.add$seasonal
+dekomp.add.resz <- dekomp.add$random
+dekomp.mult.trend <- dekomp.mult$trend
+dekomp.mult.sez <- dekomp.mult$seasonal
+dekomp.mult.resz <- dekomp.mult$random
+```
+Sprawdzimy szereg reszt z obu metod, aby stwierdzić, czy po usunięciu trendu i sezonowości mamy do czynienia z szeregiem stacjonarnym.
+\begin{figure}[H]
+```{r,echo=FALSE,fig.height=3,fig.width=4.5}
+ggtsdisplay(dekomp.add.resz, main = 'Reszty - dekompozycja addytywna')
+```
+\caption{Wykres losowych reszt oraz ich ACF i PACF dla dekompozycji addytywnej}
+\label{plot4}
+\end{figure}
+Z wykresu \ref{plot4} możemy wywnioskować, że udało nam się pozbyć trendu i sezonowości (ACF nie zanika i nie wygląda na okresową). Dodatkowo, wartości odstające nie wyróżniają się na tyle, żebyśmy mogli stwierdzić, że wariancja nie jest jednorodna. Stąd możemy stwierdzić, że szereg reszt ma stacjonarny charakter. Nie jest to jednak biały szum, gdyż za dużo obserwacji funkcji ACF odstaje poza zaznacziny przedział ufności.
+```{r,echo=FALSE}
+fit.dekomp.add <- dekomp.add.trend + dekomp.add.sez
+fit.dekomp.mult <- dekomp.mult.sez * dekomp.mult.trend
+```
+Możemy zobaczyć, czy model został dobrze dopasowany odtwarzając wykres naszych danych.
+\begin{figure}[H]
+```{r,echo=FALSE}
+autoplot(cbind(fit.dekomp.add,dane), lwd = 0.5, main = 'Dopasowanie modelu addytywnego do danych', ylab = 'Produkcja piwa (w Ml)',xlab = 'Czas')
+```
+\caption{Sprawdzenie dopasowania modelu addytywnego do danych}
+\label{plot5}
+\end{figure}
+Po rysunku \ref{plot5} widzimy, że model addytywny nie dopasował się do danych. Na początku i na końcu zbioru danych wiele wartości odstaje od oryginalnych danych. W środku wykresu jest trochę lepiej. \newline
+Zobaczmy, jak poradzi sobie model multiplikatywny. Wykres losowych reszt oraz ich ACF i PACF jest przedstawiony na wykresie \ref{plot6}.
+\begin{figure}[H]
+```{r,echo=FALSE,fig.height=3,fig.width=4.5}
+ggtsdisplay(dekomp.mult.resz, main = 'Reszty - dekompozycja multiplikatywna')
+```
+\caption{Wykres losowych reszt oraz ich ACF i PACF dla dekompozycji multiplikatywnej}
+\label{plot6}
+\end{figure}
+Z wykresu \ref{plot6} możemy wyciągnąć podobne wnioski, jak dla dekompozycji addytywnej (brak trendu, niewidoczna sezonowość, prawdopodobna stacjonarność).\newline
+Zobaczmy, czy model multiplikatywny dopasował się lepiej do danych niż model addytywny. Na wykresie \ref{plot7} mamy porównanie obu modeli względem oryginalnych danych.
+\begin{figure}[H]
+```{r,echo=FALSE}
+autoplot(cbind(fit.dekomp.add, fit.dekomp.mult, dane), lwd = 0.5, main = 'Dopasowanie modelu addytywnego i multiplikatywnego do danych', ylab = 'Produkcja piwa (w Ml)',xlab = 'Czas')
+```
+\caption{Sprawdzenie dopasowania modelu addytywnego i multiplikatywnego do danych}
+\label{plot7}
+\end{figure}
+Widzimy, że model multiplikatywny zdecydowanie lepiej dopasował się do danych od modelu addytywnego, jednak po roku 1970 widoczne jest odstawanie od oryginalnych danych. Ogólnie, oba modele usunęły trend i zniwelowały mocno sezonowość, ale nie dopasowały się do danych tak, jakbyśmy oczekiwali. Zobaczymy, czy metoda dekompozycji na podstawie modelu regresji będzie pod tym względem lepsza.
+\subsubsection{Dekompozycja na podstawie modelu regresji} \label{par2}
+Dla dekompozycji na podstawie modelu regresji przeprowadzimy podobną analizę. W tym przypadku na podstawie wykresu \ref{plot1} możemy zdecydować się, jaki model zastosować dla trendu. Wcześniej, przy \ref{plot1}, stwierdziliśmy, że możemy mieć do czynienia z trendem kwadratowym i liniowym. Być może zatem odpowiedni będzie wielomian wyższego stopnia, który nam ujmie trend w latach 1956-1970 i po roku 1970. My zbadamy kilka modeli (ozn. trend - $m_t$, sezonowość - $s_t$):
+\begin{itemize}
+\item $m_t=a+b\cdot t$ z $s_t$,
+\item $m_t=a+b\cdot t+c\cdot t^2$ z $s_t$,
+\item $m_t$ będzie wielomianem stopnia 5. z $s_t$.
+\end{itemize}
+Wpierw zajmiemy się modelem z trendem liniowym. Najpierw, sprawdźmy, co możemy wstępnie powiedzieć o tej metodzie z funkcji \verb+summary+.
+```{r, echo=FALSE}
+tslm1 <- tslm(dane ~ trend + season)
+x <- summary(tslm1)
+```
+Możemy stąd podać współczynniki, które występują przy trendzie: $m_t =$ `r tslm1$coefficients[1]` $+$ `r tslm1$coefficients[2]`$\cdot t$. Dodatkowo, wszystkie współczynniki, łącznie z tymi przy sezonowości, są istotne przy poziomie istotności $\alpha=0.05$. Współczynnik $R^2$ jest dosyć niski i wynosi `r 100*x$r.squared`%. Podobnie, jak wcześniej zobaczymy wykresy reszt, aby zobaczyć, czy model pozbył się trendu i sezonowości.
+\begin{figure}[H]
+```{r, echo=FALSE,fig.height=3,fig.width=4.5}
+ggtsdisplay(residuals(tslm1), main = 'Reszty - trend liniowy z sezonowością')
+```
+\caption{Wykres losowych reszt oraz ich ACF i PACF dla dekompozycji na podstawie modelu regresji z liniowym trendem i z sezonowością}
+\label{plot8}
+\end{figure}
+Po przyjrzeniu się wykresowi \ref{plot8} możemy wywnioskować, że trend nie został wyeliminowany, więc trend liniowy to za mało. Szczególnie widać to po zanikającej funkcji ACF. Sezonowość została jednak w większości wyeliminowana, jednak dalej widać delikatną okresowość ACF. Z powodu widocznego trendu na funkcji ACF można stwierdzić, że nie mamy do czynienia z szeregiem stacjonarnym, a tym bardziej z białym szumem.
+\par Teraz sprawdzimy, jak model dopasował się do danych na wykresie \ref{plot9}.
+\begin{figure}[H]
+```{r, echo=FALSE}
+autoplot(cbind(dane, fitted(tslm1)), main = 'Dopasowanie trendu liniowego 
+z sezonowością do danych', ylab = 'Produkcja piwa (w Ml)',xlab = 'Czas')
+```
+\caption{Sprawdzenie dopasowania modelu regresji dla trendu liniowego z sezonowością do danych}
+\label{plot9}
+\end{figure}
+Model nie uchwycił wykrzywienia danych, jednak sezonowość jest na w miarę odpowiednim poziomie. Jest to jedyny pozytyw dopasowania modelu. W ogólności, model źle się dopasował do danych.\newline
+\par Kolejnym modelem regresji, który wykorzystamy dla trendu, będzie model, w którym przyjmujemy trend kwadratowy. Podobnie, jak wcześniej zobaczmy, co wywnioskujemy z funkcji \verb+summary+.
+```{r,echo=FALSE}
+tslm2 <- tslm(dane ~ poly(trend, 2) + season)
+x <- summary(tslm2)
+```
+W tym przypadku trend ma postać $m_t =$ `r tslm2$coefficients[1]` $+$ `r tslm2$coefficients[2]` $\cdot~t~+$ (`r tslm2$coefficients[3]`) $\cdot~t^2$. Wszystkie współczynniki zarówno przy trendzie, jak i przy sezonowości są istotne na poziomie istotności 0.05. Otrzymaliśmy też o wiele wyższy współczynnik $R^2$, który wynosi `r 100*x$r.squared`%, co oznacza, że ten model jest już lepiej dopasowany do danych. Zobaczmy na wykresie reszt \ref{plot12}, czy udało się nam pozbyć trendu.
+\begin{figure}[H]
+```{r,echo=FALSE,fig.height=3,fig.width=4.5}
+ggtsdisplay(residuals(tslm2), main = 'Reszty - trend kwadratowy z sezonowością')
+```
+\caption{Wykres losowych reszt oraz ich ACF i PACF dla dekompozycji na podstawie modelu regresji z trendem kwadratowym i z sezonowością}
+\label{plot10}
+\end{figure}
+Z wykresu \ref{plot10} możemy wywnioskować, że w tym przypadku niestety też nie udało nam się do końca zniwelować trendu (zanikający wykres ACF). Tak samo, jak na \ref{plot8}, widać delikatne pozostałości po sezonowości. Z tych dwóch powodów możemy stwierdzić, że nie mamy do czynienia z szeregiem stacjonarnym, w tym także z białym szumem. \newline
+Sprawdźmy teraz dopasowanie tego modelu do danych.
+\begin{figure}[H]
+```{r,echo=FALSE}
+autoplot(cbind(dane, fitted(tslm2)), main = 'Dopasowanie trendu kwadratowego 
+z sezonowością do danych', ylab = 'Produkcja piwa (w Ml)',xlab = 'Czas')
+```
+\caption{Sprawdzenie dopasowania modelu regresji liniowej dla trendu kwadratowego z sezonowością do danych}
+\label{plot11}
+\end{figure}
+Po wykresie \ref{plot11} możemy stwierdzić, że model regresji z trendem kwadratowym zdecydowanie lepiej odwzorował dane niż model z trendem liniowym, jednak dalej jest to słabe dopasowanie. Możemy jednak stwierdzić, że większy stopień wielomianu dał lepsze dopasowanie. \newline
+\par Ostatnim modelem regresji, jaki zbadamy będzie $m_t$ jako wielomian stopnia 5 z sezonowością. Zrobimy taki duży krok, aby jak najlepiej dopasować dane i zobaczyć, czy uda nam się przy dosyć dużym stopniu wielomianu usunąć trend. Najpierw sprawdzimy, jakie informacje możemy wyciągnąć z funkcji \verb+summary+.
+```{r,echo=FALSE}
+tslm3 <- tslm(dane ~ poly(trend, 5) + season)
+x <- summary(tslm3)
+```
+W tym modelu $$m_t=a_0+a_1t+a_2t^2+a_3t^3+a_4t^4+a_5t^5,$$ gdzie $a_0=$ `r tslm3$coefficients[1]`, $a_1=$ `r tslm3$coefficients[2]`, $a_2=$ `r tslm3$coefficients[3]`, $a_3=$ `r tslm3$coefficients[4]`, $a_4=$ `r tslm3$coefficients[5]`, $a_5=$ `r tslm3$coefficients[6]`. Współczynnik $R^2$ wzrósł nam do `r x$r.squared*100`%, więc znowu nam znacznie wzrósł. Dodatkowo, wszystkie współczynniki są istotne (być może można było wziąć jeszcze wyższy stopień wielomianu). \newline
+Na wykresie \ref{plot12} możemy przyjrzeć się resztom, jakie zostaną po usunięciu trendu i sezonowości.
+\begin{figure}[H]
+```{r,echo=FALSE,fig.height=3,fig.width=4.5}
+ggtsdisplay(residuals(tslm3), main = 'Reszty - trend jako wielomian
+stopnia 5. z sezonowością')
+```
+\caption{Wykres losowych reszt oraz ich ACF i PACF dla dekompozycji na podstawie modelu regresji z trendem jako wielomian stpnia 5. i z sezonowością}
+\label{plot12}
+\end{figure}
+Na wykresie \ref{plot12} możemy dostrzec jeszcze niewielkie pozostałości po trendzie, jednak ACF już nie zanika, co jest dobrym sygnałem. Problemem jest jednak brak jednorodnej wariancji. Sezonowość została w podobny sposób zniwelowana, co dla \ref{plot10} i \ref{plot12}. Nie jest to raczej szereg stacjonarny, tym bardziej biały szum, ale być może jeszcze większy stopień wielomianu pozwoliłby nam ostatecznie dojść do stacjonarności. \newline
+Widzimy zatem, że pod względem usunięcia sezonowości i trendu ten model poradził sobie najlepiej ze wszystkich dotychczasowych modeli regresji. Nie wydaje się jednak, żeby poradził sobie lepiej niż modele oparte na metodzie dekompozycji na podstawie ruchomej średniej. W celu porównania tych obu metod dekompozycji sprawdzimy na wykresie \ref{plot13}, czy lepiej do danych dopasował się model dekompozycji na podstawie modelu regresji z trendem jako wielomian stopnia 5. i z sezonowością, czy model multiplikatywny dekompozycji na podstawie ruchomej średniej.
+\begin{figure}[H]
+```{r,echo=FALSE}
+autoplot(cbind(fitted(tslm3), fit.dekomp.mult, dane), main = 'Porównanie modelu regresji 
+z trendem jako wielomian stopnia 5. 
+z modelem multiplikatywnym', lwd=0.5, ylab = 'Produkcja piwa (w Ml)',xlab = 'Czas')
+```
+\caption{Porównanie dopasowania regresja z trendem jako wielomian stopnia 5. vs. model multiplikatwny dekompozycji opartej na podstawie ruchomej średniej do danych}
+\label{plot13}
+\end{figure}
+Widzimy, że lepiej do danych dopasował się model multiplikatywny. Stąd możemy stwierdzić, że lepiej będzie użyć metody dekompozycji na podstawie ruchomej średniej.
+\subsubsection{Dekompozycja STL oparta na metodzie loess} \label{par3}
+Ostatnią metodą dekompozycji, jaką zbadamy będzie dekompozycja STL oparta na metodzie loess. Do wykonania dekompozycji za pomocą tej metody posłuży nam funkcja \verb+stl+. W tym przypadku zbadamy 4 modele, gdzie w każdym ustawimy 2 parametry - \verb+s.window+ - parametr mówiący o okresie dla okna loess, w którym będzie wyciągana sezonowość, \verb+t.window+ - parametr mówiący o okresie dla okna loess, w którym będzie wyciągany trend. Dokładniej rozważymy następujące zestawy parametrów:
+\begin{enumerate}
+\item \verb+s.window = 'periodic', t.window = 9+, \label{1}
+\item \verb+s.window = 'periodic', t.window = 5+, \label{2}
+\item \verb+s.window = 13, t.window = 9+, \label{3}
+\item \verb+s.window = 13, t.window = 5+. \label{4}
+\end{enumerate}
+Najpierw rozważymy \ref{1}. Na wykresie \ref{plot14} są pokazane reszty i funkcje ACF oraz PACF.
+\begin{figure}[H]
+```{r,echo=FALSE,fig.height=3,fig.width=4.5}
+stl1 <- stl(dane,s.window = 'periodic', t.window = 9)
+ggtsdisplay(remainder(stl1), main = 'Reszty - dekompozycja STL
+s.window="periodic", t.window=9')
+stl1.fit <- trendcycle(stl1) + seasonal(stl1)
+```
+\caption{Wykres losowych reszt oraz ich ACF i PACF dla dekompozycji STL z par. \p9}
+\label{plot14}
+\end{figure}
+Wykres reszt wygląda znacznie lepiej niż w przypadku dekompozycji na podstawie modelu regresji, jeśli chodzi o trend, który na wykresie \ref{plot14} jest niezauważalny. Większy problem jest z sezonowością, gdyż wydaje się, że funkcja ACF jest okresowa. Tak samo występują odchylenia w wartościach, co może świadczyć o braku jednorodności wariancji. W celu zbadania stacjonarności tego najlepiej byłoby przeprowadzić odpowiedni test, gdyż z rysunku \ref{plot14} ciężko jest jednoznacznie wywnioskować, czy szereg jest stacjonarny, czy nie. Można za to jednoznacznie powiedzieć, że nie jest to biały szum (za dużo obserwacji odstaje poza przedział ufności).\newline
+Zobaczmy wykres dopasowania modelu do danych.
+\begin{figure}[H]
+```{r, echo=FALSE}
+autoplot(cbind(stl1.fit,dane), main = 'Dopasowanie modelu 
+z par. s.window="periodic",t.window=9 do danych', ylab = 'Produkcja piwa (w Ml)',xlab = 'Czas')
+```
+\caption{Sprawdzenie dopasowania dekompozycji STL z par. \p9 do danych}
+\label{plot15}
+\end{figure}
+Widzimy, że model ma problem z dopasowaniem się do danych, szczególnie na początku i na końcu wykresu \ref{plot15}. Trend został odpowiednio uchwycony przez model, jednak w przypadku sezonowości są wady w dopasowaniu modelu. Zobaczymy, czy inny parametr \verb+t.window+ lub \verb+s.window+ coś zmieni.
+\par Najpierw, zmienimy parametr \verb+t.window+ na 5 (\ref{2}). W tym przypadku szereg reszt prezentuje się następująco:
+\begin{figure}[H]
+```{r,echo=FALSE,fig.height=3,fig.width=4.5}
+stl2 <- stl(dane, s.window = 'periodic', t.window = 5)
+ggtsdisplay(remainder(stl2), main = 'Reszty - dekompozycja STL
+s.window="periodic", t.window=5')
+stl2.fit <- trendcycle(stl2) + seasonal(stl2)
+```
+\caption{Wykres losowych reszt oraz ich ACF i PACF dla dekompozycji STL z par. \per5}
+\label{plot16}
+\end{figure}
+W przypadku rysunku \ref{plot16} na wykresie ACF nie da się zauważyć sezonowości (brak wyraźnej okresowości). Problemem tu jest jednak większe "ściśnięcie" wszystkich wartości, z wyjątkiem wartości odstających, przez co wartości odstające są jeszcze bardziej zauważalne niż w przypadku \ref{plot14}. Poza tym, wydaje się, że sezonowość i trend zostały usunięte. W związku z tym, bardziej prawdopodobne jest, że ten szereg jest stacjonarny niż szereg reszt dla \ref{1}. Nie jest to na pewno biały szum, ponieważ za dużo obserwacji ACF odstaje poza przedział ufności. \newline
+Sprawdzimy teraz, jak model dopasował się do danych. 
+\begin{figure}[H]
+```{r, echo=FALSE}
+autoplot(cbind(stl1.fit,stl2.fit,dane), main = 'Dopasowanie modelu 
+z par. s.window="periodic",t.window=9 do danych', ylab = 'Produkcja piwa (w Ml)',xlab = 'Czas')
+```
+\caption{Sprawdzenie dopasowania dekompozycji STL z par. \per5 i \p9 do danych}
+\label{plot17}
+\end{figure}
+Widzimy na \ref{plot17}, że model z parametrami \ref{2} trochę lepiej dopasował się do danych niż model z par. \ref{1}, jednak jest to niewielka różnica. Oba modele mają ten sam problem - gorsze dopasowanie na początku i na końcu danych.\newline
+\par Ten problem może rozwiązać model z par. z \ref{3}. Najpierw jednak sprawdzimy, czy reszty, jakie pozostaną po usunięciu trendu i sezonowości w tym modelu będą szeregiem stacjonarnym.
+\begin{figure}[H]
+```{r,echo=FALSE,fig.height=3,fig.width=4.5}
+stl3 <- stl(dane, s.window = 13, t.window = 9)
+ggtsdisplay(remainder(stl3), main = 'Reszty - dekompozycja STL
+s.window=13, t.window=9')
+stl3.fit <- trendcycle(stl3) + seasonal(stl3)
+```
+\caption{Wykres losowych reszt oraz ich ACF i PACF dla dekompozycji STL z par. \ver139}
+\label{plot18}
+\end{figure}
+Z wykresu \ref{plot18} możemy wywnioskować, że podobnie, jak dla \ref{1} i \ref{2} niewidoczny jest trend. W porównaniu z tamtymi modelami jednak, tutaj ACF nie jest na pewno okresowa, a wariancja wydaje się stabilniejsza. Prawdopodobnie, szereg reszt z rysunku \ref{plot18} jest zatem szeregiem stacjonarnym. Nie jest to jednak biały szum z tego samego powodu, co \ref{plot14} i \ref{plot16}.\newline
+Sprawdźmy jakość dopasowania modelu z par. \ref{3} na tle modelu z par. \ref{2}.
+\begin{figure}[H]
+```{r, echo=FALSE}
+autoplot(cbind(stl2.fit,stl3.fit,dane), main = 'Dopasowanie modelu 
+z par. s.window=13, t.window=9 do danych',lwd=0.5, ylab = 'Produkcja piwa (w Ml)',xlab = 'Czas')
+```
+\caption{Sprawdzenie dopasowania dekompozycji STL z par. \p9 i \ver139 do danych}
+\label{plot19}
+\end{figure}
+Wykresy na \ref{plot19} bardzo ciężko ze sobą porównać - to wskazuje, że nie ma dużych różnic w dopasowaniu obu modeli do danych. Po bliższym przyjrzeniu się jednak możemy zauważyć, że model z parametrami \ver139 jest lepiej dopasowany do danych (zdecydowanie bliższe dopasowanie do danych na początku wykresu, w większości punktów jest bliżej oryginalnych danych).\newline
+\par Pozostaje sprawdzić, czy zmiana parametru \verb+t.window+ na 5 poprawi jeszcze bardziej dopasowanie lub zbliży szereg reszt do bycia szeregiem stacjonarnym. Najpierw, zbadamy szeregi reszt dla modelu \ref{4}.
+\begin{figure}[H]
+```{r,echo=FALSE,fig.height=3,fig.width=4.5}
+stl4 <- stl(dane, s.window = 13, t.window = 5)
+ggtsdisplay(remainder(stl4), main = 'Reszty - dekompozycja STL
+s.window=13, t.window=5')
+stl4.fit <- trendcycle(stl4) + seasonal(stl4)
+```
+\caption{Wykres losowych reszt oraz ich ACF i PACF dla dekompozycji STL z par. \verx135}
+\label{plot20}
+\end{figure}
+Na wykresie \ref{plot20} widać, że model z parametrami \verx135 ma bardziej spłaszczony wykres reszt dla obserwacji, które mniej odstają niż model z parametrami \ver139, przez co wartości odstające są bardziej widoczne. Poza tym, wnioski dla tego szeregu są takie same. W takim razie to też prawdopodobnie jest szereg stacjonarny, ale nie jest to biały szum (ten sam powód, co dla \ref{1}, \ref{2} i \ref{3}).\newline Porównajmy dopasowanie modeli z parametrami \verx135 i \ver139 do oryginalnych danych (\ref{plot21}).
+\begin{figure}[H]
+```{r, echo=FALSE}
+autoplot(cbind(stl3.fit,stl4.fit,dane), main = 'Dopasowanie modelu 
+z par. s.window=13, t.window=5 do danych', lwd=0.5, ylab = 'Produkcja piwa (w Ml)',xlab = 'Czas')
+```
+\caption{Sprawdzenie dopasowania dekompozycji STL z par. \verx135 i \ver139 do danych}
+\label{plot21}
+\end{figure}
+Ciężko stwierdzić, który model lepiej się dopasowuje do danych, co tylko świadczy o podobieństwie obu modeli. Możemy jednak zauważyć przy uważnym przypatrzeniu się, że model z par. \verx135 trochę lepiej przybliża oryginalne dane. Stąd wynika, że najlepszą analizowaną przez nas dekompozycją STL jest dekompozycja z parametrami \verx135.
+\subsection{Dodanie transformacji Boxa-Coxa}
+Kolejnym krokiem, jaki podejmiemy, będzie zastosowanie transformacji Boxa-Coxa na kilku z przedstawionych przez nas modeli. Przypomnijmy, że transformacja Boxa-Coxa jest dana wzorem:
+$$
+f_\lambda(x) = \left\{
+\begin{array}{ll}
+\displaystyle \frac{x^\lambda - 1}{\lambda}, & \lambda \neq 0, \\
+\ln x, & \lambda = 0
+\end{array}
+\right.
+$$
+Transformację Boxa-Coxa zastosujemy na następujących modelach:
+\begin{itemize}
+\item model addytywny (\verb+decompose+),
+\item model multiplikatywny (\verb+decompose+),
+\item model regresji z trendem jako wielomian stopnia 5. i z sezonowością (\verb+tslm+),
+\item model dekompozycji STL z parametrami \p9 (\verb+stl+),
+\item model dekompozycji STL z parametrami \verx135 (\verb+stl+).
+\end{itemize}
+Sprawdzać będziemy tylko jakość dopasowania modeli do danych, więc pominiemy analizę szeregu reszt. Do dopasowania odpowiedniego parametru $\lambda$ wykorzystamy funkcję \verb+BoxCox.lambda+. Wynosi ona `r BoxCox.lambda(dane)`.
+\uw{Pokazane wykresy ze względu na małą widoczność różnic zostały wcześniej przeanalizowane przez autora w większym przybliżeniu, aby uchwycić wszelkie różnice pomiędzy wykresami.}
+```{r, echo=FALSE}
+dane.lambda <- BoxCox(dane, lambda = BoxCox.lambda(dane))
+dekomp.add.lambda <- decompose(dane.lambda, type = 'additive')
+fit.dekomp.add.lambda <- dekomp.add.lambda$seasonal + 
+  dekomp.add.lambda$trend
+fit.dekomp.add.lambda <- InvBoxCox(fit.dekomp.add.lambda, lambda = BoxCox.lambda(dane))
+```
+\subsubsection{Model addytywny}
+Najpierw porównamy dopasowanie modelu addytywnego. Na wykresie \ref{plot22} pokazane jest dopasowanie tego modelu bez transformacji Boxa-Coxa i z transformacją Boxa-Coxa.
+\begin{figure}[H]
+```{r,echo=FALSE}
+autoplot(cbind(fit.dekomp.add,fit.dekomp.add.lambda,dane),lwd=0.5,main = 'Porównanie dopasowania modelu addytywnego 
+bez i z zastosowaną transformacją Boxa_Coxa', ylab = 'Produkcja piwa (w Ml)',xlab = 'Czas')
+```
+\caption{Dopasowanie modelu addytywnego: brak Boxa-Coxa vs. Box-Cox}
+\label{plot22}
+\end{figure}
+Transformacja Boxa-Coxa poprawiła dopasowanie na początku danych, ale w środku i na końcu jest gorzej. Ogółem, transformacja Boxa-Coxa nie poprawiła znacznie dopasowania do danych.
+\subsubsection{Model multiplikatywny}
+Teraz sprawdzimy drugi model uzyskany za pomocą funkcji \verb+decompose+ - multiplikatywny. Na wykresie \ref{plot23} widzimy różnicę dopasowania, gdy zastosujemy wcześniej na danych transformację Boxa-Coxa.
+\begin{figure}[H]
+```{r,echo=FALSE}
+dekomp.mult.lambda <- decompose(dane.lambda, type = 'multiplicative')
+fit.dekomp.mult.lambda <- dekomp.mult.lambda$seasonal * 
+  dekomp.mult.lambda$trend
+fit.dekomp.mult.lambda <- InvBoxCox(fit.dekomp.mult.lambda, lambda = BoxCox.lambda(dane))
+autoplot(cbind(fit.dekomp.mult.lambda,fit.dekomp.mult,dane),lwd=0.5,main='Porównanie dopasowania modelu multiplikatywnego 
+bez i z zastosowaną transformacją Boxa_Coxa', ylab = 'Produkcja piwa (w Ml)', xlab = 'Czas')
+```
+\caption{Dopasowanie modelu multiplikatynwego: brak Boxa-Coxa vs. Box-Cox}
+\label{plot23}
+\end{figure}
+Po wykresie \ref{plot23} możemy stwierdzić, że zastosowanie transformacji Boxa-Coxa nie poprawiło, ani nie pogorszyło dopasowania modelu multiplikatywnego w wyraźny sposób.
+\subsubsection{Model regresji z trendem jako wielomian stopnia 5. i z sezonowością}
+Kolejnym punktem będzie sprawdzenie jakości dopasowania modelu regresji z transformacją Boxa-Coxa i bez niej. Na wykresie \ref{plot24} widzimy porównanie dopasowania obu modeli.
+\begin{figure}[H]
+```{r, echo=FALSE}
+tslm3.lambda <- tslm(dane ~ poly(trend, 5) + season, lambda = BoxCox.lambda(dane))
+autoplot(cbind(fitted(tslm3.lambda),fitted(tslm3),dane),lwd=0.5, main = 'Porównanie dopasowania modelu tslm 
+bez i z transformacją Boxa-Coxa', ylab = 'Produkcja piwa (w Ml)', xlab = 'Czas')
+```
+\caption{Dopasowanie modelu regresji: brak Boxa-Coxa vs. Box-Cox}
+\label{plot24}
+\end{figure}
+Zastosowanie transformacji Boxa-Coxa w tym przypadku polepszyło dopasowanie na początku danych, natomiast w środku i przy końcu danych trochę pogorszyło jakość dopasowania. Ogółem, można uznać, że transformacja Boxa-Coxa doprowadziła do minimalnie lepszego dopasowania.
+\subsubsection{Dekompozycja STL z parametrami \p9}
+Kolejnym rodzajem dekompozycji, przy którym dokonamy transformacji Boxa-Coxa będzie dekompozycja STL oparta na metodzie loess. Najpierw zastosujemy przekształcenie dla modelu z parametrami \p9. Na wykresie \ref{plot25} widać porównanie modelu bez transformacji Boxa-Coxa i z tą transformacją.
+\begin{figure}[H]
+```{r, echo=FALSE}
+stl1.lambda <- stl(dane.lambda, s.window = 'periodic', t.window = 9)
+fit.stl1.lambda <- trendcycle(stl1.lambda) + seasonal(stl1.lambda)
+fit.stl1.lambda <- InvBoxCox(fit.stl1.lambda, lambda = BoxCox.lambda(dane))
+autoplot(cbind(fit.stl1.lambda,stl1.fit,dane), main = 'Porównanie dopasowania modelu STL 
+z par. s.window="periodic", t.window=9 
+bez i z transformacją Boxa-Coxa',lwd=0.5, ylab = 'Produkcja piwa (w Ml)', xlab = 'Czas')
+```
+\caption{Dopasowanie modelu STL z par. \p9: brak Boxa-Coxa vs. Box-Cox}
+\label{plot25}
+\end{figure}
+Transformacja Boxa-Coxa w tym przypadku poprawiła jakość dopasowania na początku i na końcu zbioru danych i nieznacznie pogorszyła ją w środku zbioru danych. Ogółem, można stwierdzić, że przekształcenie Boxa-Coxa wpłynęło pozytywnie na jakość dopasowania danych.
+\subsubsection{Dekompozycja STL z parametrami \verx135}
+Ostatnim modelem, na którym sprawdzimy zastosowanie transformacji Boxa-Coxa będzie model dekompozycji STL z par. \verx135. Na wykresie \ref{plot26} zaprezentowano jakość dopasowania modelu do danych z i bez transformacji Boxa-Coxa.
+\begin{figure}[H]
+```{r, echo=FALSE}
+stl4.lambda <- stl(dane.lambda, s.window = 13, t.window = 5)
+fit.stl4.lambda <- trendcycle(stl4.lambda) + seasonal(stl4.lambda)
+fit.stl4.lambda <- InvBoxCox(fit.stl4.lambda, lambda = BoxCox.lambda(dane))
+autoplot(cbind(fit.stl4.lambda,stl4.fit,dane), main = 'Porównanie dopasowania modelu STL 
+z par. s.window=13, t.window=5 
+bez i z transformacją Boxa-Coxa',lwd=0.5, ylab = 'Produkcja piwa (w Ml)', xlab = 'Czas')
+```
+\caption{Dopasowanie modelu STL z par. \verx135: brak Boxa-Coxa vs. Box-Cox}
+\label{plot26}
+\end{figure}
+Zastosowanie transformacji Boxa-Coxa w tym przypadku nie spowodowało praktycznie żadnych różnic w dopasowaniu modelu do danych. Można więc uznać, że transformacja Boxa-Coxa dla tego modelu była niepotrzebna.
+\subsection{Porównanie z różnicowaniem danych}
+Ostatnim krokiem będzie porównanie wyników eliminacji trendu i sezonowości na podstawie rozważanych metod dekompozycji z wynikami uzyskanymi poprzez odpowiednie różnicowanie danych. W tym przypadku będziemy porównywać szeregi reszt. Do różnicowania danych zastosujemy funkcję \verb+diff+ z parametrem \verb+lag=4+, gdyż dane mają okresowość 4. Wykres \ref{plot27} przedstawia reszty bo różnicowaniu danych.
+\begin{figure}[H]
+```{r,echo=FALSE,fig.height=3,fig.width=4.5}
+ggtsdisplay(diff(dane,lag = 4),main='Reszty - różnicowanie z opóźnieniem 4')
+```
+\caption{Wykres losowych reszt oraz ich ACF i PACF dla różnicowania danych z opóźnieniem 4}
+\label{plot27}
+\end{figure}
+Z wykresu \ref{plot27} możemy odczytać, że:
+\begin{itemize}
+\item nie ma pozostałości po sezonowości,
+\item są delikatne pozostałości po trendzie,
+\item dużo wartości w ACF odstaje poza wymagany przedział ufności, więc nie mamy do czynienia z białym szumem,
+\item nie ma wartości odstających,
+\item wariancja nie jest stabilna,
+\item do rozstrzygnięcia stacjonarności potrzebne są formalne testy.
+\end{itemize}
+Widzimy, że dzięki różnicowaniu udało nam się otrzymać szereg reszt, który może mieć charakter stacjonarny. Porównamy to teraz z 3 modelami, na których zastosowana została transformacja Boxa-Coxa. Zaczniemy od modelu multiplikatywnego.
+\begin{figure}[H]
+```{r,echo=FALSE,fig.height=3,fig.width=4.5}
+ggtsdisplay(dekomp.mult.lambda$random,main='Reszty - model multiplikatywny 
+z transformacją Boxa-Coxa')
+```
+\caption{Wykres losowych reszt oraz ich ACF i PACF dla modelu multiplikatywnego z przekształceniem Boxa-Coxa}
+\label{plot28}
+\end{figure}
+Reszty na wykresie \ref{plot28} mają bardzo podobny charakter do reszt w modelu multiplikatywnym bez zastosowania transformacji Boxa-Coxa (\ref{plot6}). Wnioski będą zatem podobne do tych z \ref{plot6} (niewidoczna sezonowość, eliminacja trendu, możliwa stacjonarność). W porównaniu do szeregu \ref{plot27} możemy dostrzec mniejsze pozostałości po trendzie oraz mniej "rozrzucone" obserwacje.
+\par Kolejnym modelem, z jakim porównamy różnicowanie będzie model regresji z trendem jako wielomian 5. stopnia oraz z zastosowaną transformacją Boxa-Coxa. Wykres reszt jest przedstawiony na rysunku \ref{plot29}.
+\begin{figure}[H]
+```{r,echo=FALSE,fig.height=3,fig.width=4.5}
+ggtsdisplay(residuals(tslm3.lambda), main = 'Reszty - trend jako wielomian
+stopnia 5. z sezonowością + transf. Boxa-Coxa')
+```
+\caption{Wykres losowych reszt oraz ich ACF i PACF dla dekompozycji na podstawie modelu regresji z trendem jako wielomian stopnia 5. i z sezonowością po zastosowaniu transformacji Boxa-Coxa}
+\label{plot29}
+\end{figure}
+Na wykresie reszt \ref{plot29} widzimy pozostałości po trendzie i wahania szeregu, przez które nie możemy mówić o stacjonarności szeregu. Udało się jednak prawdopodobnie wyeliminować sezonowość. Stąd szereg danych po zróżnicowaniu ma lepsze własności teoretyczne.
+\par Ostatnim szeregiem, z jakim porównamy szereg danych po zróżnicowaniu będzie szereg reszt dla modelu STL z parametrami \verx135 z zastosowaną transformacją Boxa-Coxa. W tym przypadku szereg reszt prezentuje się następująco:
+\begin{figure}[H]
+```{r,echo=FALSE,fig.height=3,fig.width=4.5}
+ggtsdisplay(remainder(stl4.lambda), main = 'Reszty - dekompozycja STL
+s.window=13, t.window=5 + transf. Boxa-Coxa')
+```
+\caption{Wykres losowych reszt oraz ich ACF i PACF dla dekompozycji STL z par. \verx135 po zastosowaniu transformacji Boxa-Coxa}
+\label{plot30}
+\end{figure}
+Wnioski dla tego szeregu będą podobne, jak w przypadku \ref{plot20}, z tą różnicą, że wykres reszt \ref{plot30} wydaje się szerszy, przez co jeszcze ciężej zobaczyć wartości odstające. Ogółem też jest to raczej szereg stacjonarny, być może ma nawet lepsze własności niż szereg przedstawiony w \ref{plot27}.
+\par W podsumowaniu:
+\begin{itemize}
+\item do rozstrzygnięcia stacjonarności szeregu danych po zróżnicowaniu potrzebny jest formalny test,
+\item szereg reszt \ref{plot28} jest szybciej szeregiem stacjonarnym niż \ref{plot27},
+\item szereg \ref{plot29} ma gorsze własności teoretyczne niż szereg \ref{plot27},
+\item szereg \ref{plot30} możemy uznać za stacjonarny - ma zatem lepsze własności niż szereg danych po zróżnicowaniu.
+\end{itemize}
+
+
+ 
+
+# Zastosowanie wskaźników analizy technicznej w analizie szeregów czasowych
+
+W tej sekcji przyjrzymy się wybranym wskaźnikom analizy technicznej, które mogą być użyteczne w analizie szeregów czasowych.
+
+## Wybrane wskaźniki analizy technicznej
+
+* **SMA (Simple Moving Average) - Prosta Średnia Krocząca, SMA(n)**:
+  * $\text{SMA(n)} = \frac{1}{n} \sum_{i=1}^{n} P_i$
+  
+  * $(P_i)$: cena zamknięcia z $(i)$-tego okresu
+  
+  * $(n)$: liczba okresów, dla których obliczamy średnią
+  
+  * bazowo: $(n = 50)$, $(n = 200)$
+  
+  * sygnał kupna: SMA krótkookresowa przecina SMA długookresową od dołu
+  
+  * sygnał sprzedaży: SMA krótkookresowa przecina SMA długookresową od góry
+  
+  * działa najlepiej w trendach, mniej skuteczna w konsolidacji
+
+* **MACD (Moving Average Convergence Divergence) - Zbieżność/Rozbieżność Średnich Kroczących, MACD(n,m,k)**:
+  * $\text{MACD} = \text{EMA}_n - \text{EMA}_m$
+  
+  * linia MACD: różnica między krótkookresową EMA $(n)$ a długookresową EMA $(m)$ ceny zamknięcia
+  
+  * linia sygnału: $(k)$-okresowa EMA linii MACD
+  
+  * bazowo: $(n = 12), (m = 26), (k = 9)$
+  
+  * sygnał kupna: MACD przecina linię sygnału od dołu
+  
+  * sygnał sprzedaży: MACD przecina linię sygnału od góry
+  
+  * najlepiej działa w trendach, ale może dawać opóźnione sygnały w konsolidacji
+  
+
+* **STS (Stochastic Oscillator) - Oscylator Stochastyczny, STS(n)**:
+
+  * $\text{STS} = 100 \times \frac{C - L_n}{H_n - L_n}$
+  
+  * $(C)$: cena zamknięcia, $(L_n)$: najniższa cena, $(H_n)$: najwyższa cena z ostatnich $(n)$ okresów
+  
+  * bazowo: $(n = 14)$, poziom wykupienia = 80, poziom wyprzedania = 20
+  
+  * wykupienie: $STS > 80$, wyprzedanie: $STS < 20$
+  
+  * sygnał kupna: STS przecina 20 od dołu, sygnał sprzedaży: STS przecina 80 od góry
+  
+  * skuteczny w trendzie bocznym, mniej w silnych trendach
+  
+* **SMI (Stochastic Momentum Index) - Indeks Momentum Stochastycznego, SMI(n)**:
+  * wygładzona wersja STS, uwzględniająca średnie kroczące
+  
+  * bazowo: $(n = 14)$, poziom wykupienia = 80, poziom wyprzedania = 20
+  
+  * redukuje fałszywe sygnały w porównaniu do STS
+  
+  * interpretacja podobna do STS, ale bardziej stabilna
+  
+* **Bollinger Bands - Wstęgi Bollingera, BB(n,k)**:
+
+  Składają się z trzech linii:
+  
+  * środkowa: $(n)$-okresowa SMA
+  * górna: $\text{SMA} + k \times \sigma$
+  * dolna: $(\text{SMA} - k \times \sigma)$
+  * $(\sigma)$: odchylenie standardowe cen z $(n)$ okresów
+  
+  * bazowo: $(n = 20), (k = 2)$
+  * wykupienie: cena blisko górnej wstęgi, wyprzedanie: cena blisko dolnej wstęgi
+  * zwężenie wstęg: niska zmienność, rozszerzenie wstęg: wysoka zmienność
+  * działa dobrze w ocenie zmienności i punktów odwrócenia
+  
+* **RSI (Relative Strength Index) - Indeks Siły Względnej, RSI(n)**:
+
+  * $\text{RSI} = 100 - \frac{100}{1 + \frac{\text{średni zysk}}{\text{średnia strata}}}$
+  
+  * średni zysk i strata obliczane z (n) okresów
+  
+  * bazowo: (n = 14), poziom wyprzedania = 30, poziom wykupienia = 70
+  
+  * wykupienie: RSI > 70, wyprzedanie: RSI < 30
+  
+  * sygnał kupna: RSI przecina 30 od dołu, sygnał sprzedaży: RSI przecina 70 od góry
+  
+  * przydatny do identyfikacji odwróceń trendu, szczególnie w połączeniu z innymi wskaźnikami
+  
+    
+## Wizualizacja i interpretacja wybranych wskaźników
+
+Poniższa analiza techniczna dotyczy spółki Apple Inc. (AAPL) w okresie od 1 stycznia 2020 do 31 grudnia 2022 i wskaźników: SMA, MACD, Wstęg Bollingera i RSI. 
+
+```{r dane}
+library(quantmod)
+AAPL.raw <- getSymbols(Symbols = "AAPL", src = "yahoo", auto.assign = FALSE)
+AAPL.2015.2022 <- AAPL.raw["2020-01-01::2022-12-31"]
+cena <- Cl(AAPL.2015.2022)
+```
+
+```{r SMA, fig.cap="\\label{fig:sma} SMA dla cen zamknięcia AAPL w okresie 1.01.2020-31.12.2022", fig.width=6, fig.height=5, fig.keep='last'}
+SMA.50 <- SMA(cena, n=50)
+SMA.200 <- SMA(cena, n=200)
+
+plot(cena, main="SMA(50) i SMA(200)", ylab="Cena zamknięcia", main.timespan = FALSE, yaxis.right=FALSE, ylim=c(min(cena)-10,max(cena)+10))
+lines(SMA.50, col="red", lwd=2)
+lines(SMA.200, col='blue', lwd=2)
+addLegend("bottomright", on=1, legend.names = c("Cena zamknięcia", "SMA(50)", "SMA(200)"), lty=c(1, 1, 1), lwd=c(1,2,2), col=c("black", "red", "blue"))
+```
+
+Interpretacja SMA (Rysunek \ref{fig:sma}):
+
+* koniec 2022: SMA(50) przecinająca SMA(200) od góry - sygnał sprzedaży
+* w latach 2020-2021 SMA(50) nad SMA(200) potwierdzała silny trend wzrostowy
+* W 2022 SMA(50) pod SMA(200) wskazywała na dominację niedźwiedzi
+
+
+```{r BB, fig.cap="\\label{fig:bb} Wstęgi Bollingera dla cen zamknięcia AAPL w okresie 1.01.2020-31.12.2022", fig.width=6, fig.height=5, fig.keep='last'}
+BB <- BBands(cena, n=20, sd=2)
+plot(cena, main="Wstęgi Bollingera (20,2)", ylab="Cena zamknięcia", main.timespan = FALSE, yaxis.right=FALSE)
+lines(BB[,"dn"], col="red", lwd=2)
+lines(BB[,"mavg"], col="blue", lwd=2)
+lines(BB[,"up"], col="red", lwd=2)
+addLegend("bottomright", on=1, legend.names = c("Cena zamknięcia", "Średnia SMA(20)", "Górna/dolna wstęga"), lty=c(1, 1, 1), lwd=c(1,2,2), col=c("black", "blue", "red"))
+```
+
+
+Interpretacja Wstęg Bollingera (Rysunek \ref{fig:bb}):
+
+* marzec 2020: odbicia od dolnej wstęgi - sygnał kupna
+* dotknięcia górnej wstęgi w 2020-2021 często poprzedzały korekty
+* zwiększona szerokość wstęg w marcu 2020 i w 2022 wskazywała na podwyższoną zmienność
+
+
+```{r macd, fig.cap="\\label{fig:macd} MACD dla cen zamknięcia AAPL w okresie 1.01.2020-31.12.2022", fig.width=6, fig.height=5}
+MACD <- MACD(cena, nFast=12, nSlow=26, nSig=9)
+
+par(mfrow=c(2,1), mar=c(2,4,4,2)) 
+
+plot(cena, main="Cena zamknięcia AAPL", ylab="Cena", xlab="", main.timespan = FALSE)
+
+plot(as.zoo(MACD[,1]), main="MACD(12,26,9)", ylab="Wartość", xlab="Data", 
+     col="blue", type="l", ylim=range(MACD, na.rm=TRUE))
+lines(as.zoo(MACD[,2]), col="red", lwd=2)
+abline(h=0, col="gray", lty=3, lwd=1.5)
+
+legend("topright", legend=c("Linia MACD", "Linia sygnału"), col=c("blue", "red"), lty=c(1,1,1), lwd=c(1,2,1), cex=0.6)
+
+```
+
+Interpretacja MACD (Rysunek \ref{fig:macd}):
+
+* marzec 2020: linia MACD poniżej linii sygnału - sygnał sprzedaży
+* kwiecień 2020: przecięcie linii sygnału od dołu - sygnał kupna
+* 2021: wielokrotne przecięcia linii sygnału - seria krótkoterminowych sygnałów
+* 2022: MACD częściej poniżej zera - osłabienie trendu wzrostowego
+
+```{r RSI, fig.cap="\\label{fig:rsi} RSI dla cen zamknięcia AAPL w okresie 1.01.2020-31.12.2022", fig.width=6, fig.height=5}
+RSI <- RSI(cena, n=14)
+
+par(mfrow=c(2,1), mar=c(2,4,4,2))
+plot(cena, main="Cena zamknięcia AAPL", ylab="Cena", xlab="", main.timespan=FALSE, yaxis.right=FALSE)
+
+plot(RSI, main="RSI(14)", ylab="Wartość", xlab="Data", ylim=c(0,100), yaxis.right=FALSE)
+```
+
+Interpretacja RSI(14):
+
+* Marzec 2020: spadek do 30 - wyprzedanie
+* Połowa 2020: wzrost >70 - silne wykupienie
+* 2020-2022: kilka okresów przekroczenia 70 - lokalne szczyty ceny
+* 2022: RSI rzadko powyżej 60 - osłabienie trendu wzrostowego
+
+
+Wpływ zmiany parametrów we wskaźnikach:
+
+* **SMA**: 
+
+  * krótsze okresy (SMA(20) zamiast SMA(50)) generują szybsze sygnały, ale więcej fałszywych alarmów
+  * przecięcia przy SMA(20/100) pojawiają się wcześniej niż przy SMA(50/200)
+  * w 2022 SMA(20/100) wskazałyby wcześniejsze sygnały spadkowe niż SMA(50/200)
+
+* **MACD**:
+
+   - Parametry (8,17,9) zwiększają czułość wskaźnika – więcej sygnałów w trendach bocznych
+   - Parametry (5,35,5) zwiększają opóźnienie, ale redukują fałszywe sygnały z 2022 roku
+
+* **Wstęgi Bollingera**:
+
+   - węższe wstęgi ($1.5 \sigma$ zamiast $2 \sigma$) dają więcej sygnałów, zwłaszcza w spokojnych okresach 2021
+   - krótszy okres (10 zamiast 20) zwiększa czułość na gwałtowne ruchy z marca 2020
+   - szersze wstęgi ($2.5 \sigma$ zamiast $2 \sigma$) lepiej identyfikują wyprzedanie z marca 2020
+
+* **RSI**:
+
+   - RSI(7) szybciej reaguje na zmiany – więcej sygnałów wyprzedania w 2022
+   - RSI(21) daje mniej, ale bardziej wiarygodne sygnały ekstremów rynkowych
+
